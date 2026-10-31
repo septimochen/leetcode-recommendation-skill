@@ -67,6 +67,24 @@ def test_sync_failure_preserves_existing_history(tmp_path, monkeypatch):
     assert target.read_bytes() == before
 
 
+def test_default_history_import_and_sync(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    source = tmp_path / "export.json"
+    source.write_text(json.dumps([record()]))
+    target = tmp_path / ".config/leetcode-data/history.json"
+    assert history.main(["import", str(source), "--accepted-only"]) == 0
+    monkeypatch.setattr(history, "fetch_recent", lambda _: [record(timestamp="1470000001")])
+    assert history.main(["sync", "--username", "alice"]) == 0
+    assert json.loads(target.read_text()) == [record(timestamp="1470000001"), record()]
+
+
+def test_sync_without_history_stops_before_network(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setattr(history, "fetch_recent", lambda _: pytest.fail("unexpected API request"))
+    assert history.main(["sync", "--username", "alice"]) == 1
+    assert not (tmp_path / ".config/leetcode-data/history.json").exists()
+
+
 @pytest.mark.parametrize("value", [True, -1, "1470000000000", "2020-01-01", None])
 def test_invalid_timestamps_rejected(value):
     with pytest.raises(ValueError):

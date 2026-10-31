@@ -9,14 +9,14 @@ Use the user's accepted-submission history to identify practice patterns and rec
 
 ## Import and refresh
 
-Ask for the history file and LeetCode.com username if needed. Store the normalized history in a user-chosen persistent location outside this skill; do not commit personal history to a repository. Inspect the supplied export's structure and status values before importing. The helper supports JSON arrays and configurable top-level field names. For another format or nested structure, adapt it after seeing the actual export; never guess that failed submissions are accepted. Use `--accepted-only` only when the source is known to contain accepted submissions exclusively.
+Use `~/.config/leetcode-data/history.json` as the default history without asking for its path; honor an explicitly supplied alternative. Ask for the LeetCode.com username if needed. Do not commit personal history to a repository. Inspect the supplied export's structure and status values before importing. The helper supports JSON arrays and configurable top-level field names. For another format or nested structure, adapt it after seeing the actual export; never guess that failed submissions are accepted. Use `--accepted-only` only when the source is known to contain accepted submissions exclusively.
 
 ```sh
-python3 <skill-dir>/scripts/history.py import EXPORT.json --output HISTORY.json
-python3 <skill-dir>/scripts/history.py sync --username USERNAME --history HISTORY.json
+python3 <skill-dir>/scripts/history.py import EXPORT.json
+python3 <skill-dir>/scripts/history.py sync --username USERNAME
 ```
 
-Run `python3 <skill-dir>/scripts/history.py import --help` for field mappings. Import merges into an existing history. Sync queries LeetCode.com for up to 20 recent accepted submissions and merges idempotently. A full response with no overlap may indicate missing records; tell the user and request a fresh full export to fill the gap. A smaller response or overlap does not prove completeness. The public API can be unavailable, return incomplete data, or change; retain existing history on failure and explain stale data. This helper targets leetcode.com, not leetcode.cn.
+Run `python3 <skill-dir>/scripts/history.py import --help` for field mappings. Use `--output` on import or `--history` on sync to override the default. Import merges into an existing history. Sync requires an existing history, queries LeetCode.com for up to 20 recent accepted submissions and merges idempotently. A full response with no overlap may indicate missing records; tell the user and request a fresh full export to fill the gap. A smaller response or overlap does not prove completeness. The public API can be unavailable, return incomplete data, or change; retain existing history on failure and explain stale data. This helper targets leetcode.com, not leetcode.cn.
 
 Use the same sync command for a manual refresh or in a user-configured daily scheduler. Creating a schedule or sending notifications requires the user's explicit request; do not set one up automatically.
 

@@ -46,6 +46,10 @@ def normalize(record, fields):
 FIELDS = {key: key for key in ("title", "titleSlug", "timestamp")}
 
 
+def default_history():
+    return Path.home() / ".config" / "leetcode-data" / "history.json"
+
+
 def normalize_list(data, fields=FIELDS):
     if not isinstance(data, list):
         raise ValueError("expected a JSON array of submissions")
@@ -107,7 +111,7 @@ def main(argv=None):
     commands = parser.add_subparsers(dest="command", required=True)
     importer = commands.add_parser("import", help="merge a JSON export into normalized history")
     importer.add_argument("input", type=Path)
-    importer.add_argument("--output", required=True, type=Path)
+    importer.add_argument("--output", default=default_history(), type=Path)
     importer.add_argument("--title-field", default="title")
     importer.add_argument("--slug-field", default="titleSlug")
     importer.add_argument("--timestamp-field", default="timestamp")
@@ -120,10 +124,12 @@ def main(argv=None):
     )
     sync = commands.add_parser("sync", help="merge the latest 20 accepted submissions")
     sync.add_argument("--username", required=True)
-    sync.add_argument("--history", required=True, type=Path)
+    sync.add_argument("--history", default=default_history(), type=Path)
     args = parser.parse_args(argv)
     try:
         target = args.output if args.command == "import" else args.history
+        if args.command == "sync" and not target.is_file():
+            raise ValueError(f"history not found: {target}; import a history before syncing")
         existing = normalize_list(read_json(target)) if target.exists() else []
         if args.command == "import":
             source = read_json(args.input)
