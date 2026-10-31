@@ -1,0 +1,14 @@
+# Ignore by default; explicitly include the project files.
+/*
+!/.gitignore
+!/Makefile
+!/pyproject.toml
+!/uv.lock
+!/leetcode-recommendation/
+!/tests/
+
+# Keep local caches and personal history out of the repository.
+**/__pycache__/
+**/.pytest_cache/
+**/.ruff_cache/
+**/*.pyc
