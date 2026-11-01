@@ -1,5 +1,5 @@
-CODEX_HOME ?= $(HOME)/.codex
-SKILL_DIR := $(CODEX_HOME)/skills/leetcode-recommendation
+SKILLS_DIR ?= $(HOME)/.agents/skills
+SKILL_DIR := $(SKILLS_DIR)/leetcode-recommendation
 
 .PHONY: check format test lint install
 
