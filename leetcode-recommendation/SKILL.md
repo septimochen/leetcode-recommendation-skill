@@ -5,7 +5,7 @@ description: Refresh and analyze a user's LeetCode accepted submission history t
 
 # LeetCode practice recommendations
 
-Use the user's accepted-submission history to identify practice patterns and recommend specific problems. History consists of JSON objects with `title`, `titleSlug`, and Unix-seconds `timestamp` as a string; each distinct problem and timestamp is an event, so repeated solves are retained.
+Use the user's accepted-submission history to identify practice patterns and recommend specific problems. History consists of JSON objects with `title`, `titleSlug`, and Unix-seconds `timestamp` as a string. Each problem appears once, with its latest accepted timestamp; earlier solves are not retained.
 
 ## Import and refresh
 
@@ -24,7 +24,7 @@ Use the same sync command for a manual refresh or in a user-configured daily sch
 
 ## Analyze and recommend
 
-Read the history or a faithful summary sized to the context, retaining counts, recency, repeated solves, and evidence for topic coverage. Enrich problem topics and difficulty from reliable, current problem metadata when available; do not invent tags or assume a problem's difficulty. Distinguish observed coverage and practice frequency from actual mastery: accepted records omit failed attempts, time spent, assistance, and reasoning. Ask about goals, available time, or weak areas when useful, and state meaningful uncertainty or missing history.
+Read the history or a faithful summary sized to the context, retaining counts, latest-solve recency, and evidence for topic coverage. The history cannot establish solve frequency. Enrich problem topics and difficulty from reliable, current problem metadata when available; do not invent tags or assume a problem's difficulty. Distinguish observed coverage from actual mastery: accepted records omit failed attempts, time spent, assistance, and reasoning. Ask about goals, available time, or weak areas when useful, and state meaningful uncertainty or missing history.
 
 Recommend a practical mix of new problems and reviews suited to the user's goals and experience. For each, give the title, a LeetCode problem link (`https://leetcode.com/problems/<titleSlug>/`), the skill it practices, and a brief reason tied to the evidence. Identify reviews as previously solved and new problems as new only when the available history supports that claim; avoid implying the history is complete if it is not. Prefer verified, accessible problems and indicate uncertainty about premium access. Do not reveal solutions unless asked.
 

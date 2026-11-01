@@ -14,7 +14,7 @@ def record(slug="two-sum", timestamp="1470000000", title="Two Sum"):
     return {"title": title, "titleSlug": slug, "timestamp": timestamp}
 
 
-def test_import_filters_and_merges_repeated_solves(tmp_path):
+def test_import_filters_and_keeps_latest_solve_per_problem(tmp_path):
     source = tmp_path / "export.json"
     target = tmp_path / "history.json"
     source.write_text(
@@ -28,7 +28,7 @@ def test_import_filters_and_merges_repeated_solves(tmp_path):
     )
     assert history.main(["import", str(source), "--output", str(target)]) == 0
     assert history.main(["import", str(source), "--output", str(target)]) == 0
-    assert json.loads(target.read_text()) == [record(timestamp="1470000001"), record()]
+    assert json.loads(target.read_text()) == [record(timestamp="1470000001")]
 
 
 def test_import_unknown_schema_does_not_damage_history(tmp_path):
@@ -75,7 +75,16 @@ def test_default_history_import_and_sync(tmp_path, monkeypatch):
     assert history.main(["import", str(source), "--accepted-only"]) == 0
     monkeypatch.setattr(history, "fetch_recent", lambda _: [record(timestamp="1470000001")])
     assert history.main(["sync", "--username", "alice"]) == 0
-    assert json.loads(target.read_text()) == [record(timestamp="1470000001"), record()]
+    assert json.loads(target.read_text()) == [record(timestamp="1470000001")]
+
+
+def test_merge_deduplicates_existing_and_incoming_by_latest_timestamp():
+    existing = [record(timestamp="100"), record(timestamp="200")]
+    incoming = [record(timestamp="150"), record(slug="other", timestamp="300", title="Other")]
+    assert history.merge(existing, incoming) == [
+        record(slug="other", timestamp="300", title="Other"),
+        record(timestamp="200"),
+    ]
 
 
 def test_sync_without_history_stops_before_network(tmp_path, monkeypatch):

@@ -57,11 +57,11 @@ def normalize_list(data, fields=FIELDS):
 
 
 def merge(existing, incoming):
-    # The API's three-field shape has no submission ID; exact same-second
-    # submissions to the same problem cannot be distinguished.
-    result = {(item["titleSlug"], item["timestamp"]): item for item in existing}
-    for item in incoming:
-        result.setdefault((item["titleSlug"], item["timestamp"]), item)
+    result = {}
+    for item in [*existing, *incoming]:
+        slug = item["titleSlug"]
+        if slug not in result or int(item["timestamp"]) > int(result[slug]["timestamp"]):
+            result[slug] = item
     return sorted(result.values(), key=lambda item: (-int(item["timestamp"]), item["titleSlug"]))
 
 
@@ -167,7 +167,7 @@ def main(argv=None):
         combined = merge(existing, incoming)
         write_json(target, combined)
         print(
-            f"Merged {len(incoming)} accepted records; history contains {len(combined)} distinct events."
+            f"Merged {len(incoming)} accepted records; history contains {len(combined)} distinct problems."
         )
         return 0
     except (OSError, ValueError, json.JSONDecodeError, urllib.error.URLError) as exc:
