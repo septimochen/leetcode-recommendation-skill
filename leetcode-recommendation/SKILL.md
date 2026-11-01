@@ -1,6 +1,6 @@
 ---
 name: leetcode-recommendation
-description: Analyze a user's LeetCode accepted submission history and recommend targeted new problems or reviews; import or refresh that history when requested.
+description: Refresh and analyze a user's LeetCode accepted submission history to recommend targeted new problems or reviews, and import history when requested.
 ---
 
 # LeetCode practice recommendations
@@ -10,6 +10,8 @@ Use the user's accepted-submission history to identify practice patterns and rec
 ## Import and refresh
 
 Use `~/.config/leetcode-data/history.json` as the default history without asking for its path; honor an explicitly supplied alternative. Ask for the LeetCode.com username if needed. Do not commit personal history to a repository. Inspect the supplied export's structure and status values before importing. The helper supports JSON arrays and configurable top-level field names. For another format or nested structure, adapt it after seeing the actual export; never guess that failed submissions are accepted. Use `--accepted-only` only when the source is known to contain accepted submissions exclusively.
+
+Before every recommendation, refresh the history. Read the LeetCode.com username from the `username` field in `~/.config/leetcode-data/config.json`, unless the user supplies a different username; ask if neither is available. Run the sync command below with that username. If refresh fails, explain that the recommendations use stale history and preserve the existing file. Do not put personal configuration in the repository.
 
 ```sh
 python3 <skill-dir>/scripts/history.py import EXPORT.json
