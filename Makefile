@@ -1,4 +1,11 @@
-.PHONY: check format test lint
+CODEX_HOME ?= $(HOME)/.codex
+SKILL_DIR := $(CODEX_HOME)/skills/leetcode-recommendation
+
+.PHONY: check format test lint install
+
+install:
+	mkdir -p "$(SKILL_DIR)"
+	cp -R leetcode-recommendation/. "$(SKILL_DIR)/"
 
 check: lint test
 	uv run ty check leetcode-recommendation/scripts
