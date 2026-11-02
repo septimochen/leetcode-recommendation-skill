@@ -1,4 +1,10 @@
 #!/usr/bin/env python3
+# /// script
+# requires-python = ">=3.14"
+# dependencies = [
+#     "truststore>=0.10.5",
+# ]
+# ///
 """Normalize accepted submissions and merge a LeetCode recent-AC window."""
 
 import argparse
@@ -9,6 +15,14 @@ import tempfile
 import urllib.error
 import urllib.request
 from pathlib import Path
+
+try:
+    import truststore  # type: ignore[import-not-found]
+except ModuleNotFoundError:
+    truststore = None
+
+if truststore is not None:
+    truststore.inject_store_into_ssl()  # ensure urllib.request uses system CA bundle
 
 QUERY = """query RecentAC($username: String!, $limit: Int!) {
   recentAcSubmissionList(username: $username, limit: $limit) {
@@ -24,23 +38,33 @@ def read_json(path):
 
 def normalize(record, fields):
     if not isinstance(record, dict):
-        raise ValueError("each submission must be an object")
+        raise TypeError("each submission must be an object")
     try:
         title = record[fields["title"]]
         slug = record[fields["titleSlug"]]
         timestamp = record[fields["timestamp"]]
     except KeyError as exc:
         raise ValueError(f"missing field: {exc.args[0]}") from exc
-    if not isinstance(title, str) or not title.strip():
+    if not isinstance(title, str):
+        raise TypeError("title must be a string")
+    if not title.strip():
         raise ValueError("title must be a nonempty string")
-    if not isinstance(slug, str) or not slug.strip():
+    if not isinstance(slug, str):
+        raise TypeError("titleSlug must be a string")
+    if not slug.strip():
         raise ValueError("titleSlug must be a nonempty string")
     if isinstance(timestamp, bool) or not isinstance(timestamp, (str, int)):
-        raise ValueError("timestamp must be Unix seconds")
+        raise TypeError("timestamp must be Unix seconds")
     stamp = str(timestamp)
     if not stamp.isascii() or not stamp.isdigit() or int(stamp) > 9999999999:
-        raise ValueError("timestamp must be nonnegative Unix seconds (not milliseconds)")
-    return {"title": title.strip(), "titleSlug": slug.strip(), "timestamp": str(int(stamp))}
+        raise ValueError(
+            "timestamp must be nonnegative Unix seconds (not milliseconds)"
+        )
+    return {
+        "title": title.strip(),
+        "titleSlug": slug.strip(),
+        "timestamp": str(int(stamp)),
+    }
 
 
 FIELDS = {key: key for key in ("title", "titleSlug", "timestamp")}
@@ -52,7 +76,7 @@ def default_history():
 
 def normalize_list(data, fields=FIELDS):
     if not isinstance(data, list):
-        raise ValueError("expected a JSON array of submissions")
+        raise TypeError("expected a JSON array of submissions")
     return [normalize(item, fields) for item in data]
 
 
@@ -60,9 +84,13 @@ def merge(existing, incoming):
     result = {}
     for item in [*existing, *incoming]:
         slug = item["titleSlug"]
-        if slug not in result or int(item["timestamp"]) > int(result[slug]["timestamp"]):
+        if slug not in result or int(item["timestamp"]) > int(
+            result[slug]["timestamp"]
+        ):
             result[slug] = item
-    return sorted(result.values(), key=lambda item: (-int(item["timestamp"]), item["titleSlug"]))
+    return sorted(
+        result.values(), key=lambda item: (-int(item["timestamp"]), item["titleSlug"])
+    )
 
 
 def write_json(path, data):
@@ -101,15 +129,19 @@ def fetch_recent(username):
             f"GraphQL request failed: {result.get('errors') if isinstance(result, dict) else 'invalid response'}"
         )
     data = result.get("data")
-    if not isinstance(data, dict) or not isinstance(data.get("recentAcSubmissionList"), list):
-        raise ValueError("GraphQL response has no recent accepted submission list")
+    if not isinstance(data, dict) or not isinstance(
+        data.get("recentAcSubmissionList"), list
+    ):
+        raise TypeError("GraphQL response has no recent accepted submission list")
     return normalize_list(data["recentAcSubmissionList"])
 
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
-    importer = commands.add_parser("import", help="merge a JSON export into normalized history")
+    importer = commands.add_parser(
+        "import", help="merge a JSON export into normalized history"
+    )
     importer.add_argument("input", type=Path)
     importer.add_argument("--output", default=default_history(), type=Path)
     importer.add_argument("--title-field", default="title")
@@ -129,7 +161,9 @@ def main(argv=None):
     try:
         target = args.output if args.command == "import" else args.history
         if args.command == "sync" and not target.is_file():
-            raise ValueError(f"history not found: {target}; import a history before syncing")
+            raise ValueError(
+                f"history not found: {target}; import a history before syncing"
+            )
         existing = normalize_list(read_json(target)) if target.exists() else []
         if args.command == "import":
             source = read_json(args.input)
@@ -139,12 +173,17 @@ def main(argv=None):
                 )
             if not args.accepted_only:
                 if any(
-                    not isinstance(item, dict) or args.status_field not in item for item in source
+                    not isinstance(item, dict) or args.status_field not in item
+                    for item in source
                 ):
                     raise ValueError(
                         f"every record must have {args.status_field!r}; use --accepted-only only for an accepted-only export"
                     )
-                source = [item for item in source if item[args.status_field] == args.accepted_value]
+                source = [
+                    item
+                    for item in source
+                    if item[args.status_field] == args.accepted_value
+                ]
             incoming = normalize_list(
                 source,
                 {

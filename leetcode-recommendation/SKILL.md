@@ -14,11 +14,11 @@ Use `~/.config/leetcode-data/history.json` as the default history without asking
 Before every recommendation, refresh the history. Read the LeetCode.com username from the `username` field in `~/.config/leetcode-data/config.json`, unless the user supplies a different username; ask if neither is available. Run the sync command below with that username. If refresh fails, explain that the recommendations use stale history and preserve the existing file. Do not put personal configuration in the repository.
 
 ```sh
-python3 <skill-dir>/scripts/history.py import EXPORT.json
-python3 <skill-dir>/scripts/history.py sync --username USERNAME
+uv run <skill-dir>/scripts/history.py import EXPORT.json
+uv run <skill-dir>/scripts/history.py sync --username USERNAME
 ```
 
-Run `python3 <skill-dir>/scripts/history.py import --help` for field mappings. Use `--output` on import or `--history` on sync to override the default. Import merges into an existing history. Sync requires an existing history, queries LeetCode.com for up to 20 recent accepted submissions and merges idempotently. A full response with no overlap may indicate missing records; tell the user and request a fresh full export to fill the gap. A smaller response or overlap does not prove completeness. The public API can be unavailable, return incomplete data, or change; retain existing history on failure and explain stale data. This helper targets leetcode.com, not leetcode.cn.
+Run `uv run <skill-dir>/scripts/history.py import --help` for field mappings. Use `--output` on import or `--history` on sync to override the default. Import merges into an existing history. Sync requires an existing history, queries LeetCode.com for up to 20 recent accepted submissions and merges idempotently. A full response with no overlap may indicate missing records; tell the user and request a fresh full export to fill the gap. A smaller response or overlap does not prove completeness. The public API can be unavailable, return incomplete data, or change; retain existing history on failure and explain stale data. This helper targets leetcode.com, not leetcode.cn.
 
 Use the same sync command for a manual refresh or in a user-configured daily scheduler. Creating a schedule or sending notifications requires the user's explicit request; do not set one up automatically.
 
