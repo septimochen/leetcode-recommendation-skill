@@ -17,12 +17,12 @@ import urllib.request
 from pathlib import Path
 
 try:
-    import truststore  # type: ignore[import-not-found]
+    import truststore  # ty: ignore[unresolved-import]
 except ModuleNotFoundError:
     truststore = None
 
 if truststore is not None:
-    truststore.inject_store_into_ssl()  # ensure urllib.request uses system CA bundle
+    truststore.inject_into_ssl()  # ensure urllib.request uses system CA bundle
 
 QUERY = """query RecentAC($username: String!, $limit: Int!) {
   recentAcSubmissionList(username: $username, limit: $limit) {
@@ -209,7 +209,7 @@ def main(argv=None):
             f"Merged {len(incoming)} accepted records; history contains {len(combined)} distinct problems."
         )
         return 0
-    except (OSError, ValueError, json.JSONDecodeError, urllib.error.URLError) as exc:
+    except (OSError, TypeError, ValueError, urllib.error.URLError) as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 1
 
