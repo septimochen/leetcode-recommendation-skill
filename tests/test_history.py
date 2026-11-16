@@ -7,9 +7,18 @@ from pathlib import Path
 import pytest
 
 SCRIPT = Path(__file__).parents[1] / "leetcode-recommendation/scripts/history.py"
-spec = importlib.util.spec_from_file_location("history", SCRIPT)
-history = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(history)
+
+
+def load_history(name: str) -> types.ModuleType:
+    spec = importlib.util.spec_from_file_location(name, SCRIPT)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"Cannot load {name!r} from {SCRIPT}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+history = load_history("history")
 
 
 def record(slug="two-sum", timestamp="1470000000", title="Two Sum"):
@@ -23,11 +32,7 @@ def test_script_initializes_system_certificate_store(monkeypatch):
         "truststore",
         types.SimpleNamespace(inject_into_ssl=lambda: calls.append(True)),
     )
-    script_spec = importlib.util.spec_from_file_location(
-        "history_with_truststore", SCRIPT
-    )
-    module = importlib.util.module_from_spec(script_spec)
-    script_spec.loader.exec_module(module)
+    load_history("history_with_truststore")
     assert calls == [True]
 
 

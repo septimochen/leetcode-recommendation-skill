@@ -17,7 +17,8 @@ import urllib.request
 from pathlib import Path
 
 try:
-    import truststore  # ty: ignore[unresolved-import]
+    # This dependency is declared in the standalone script metadata.
+    import truststore  # ty: ignore
 except ModuleNotFoundError:
     truststore = None
 

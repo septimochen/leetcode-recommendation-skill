@@ -8,7 +8,7 @@ install:
 	cp -R leetcode-recommendation/. "$(SKILL_DIR)/"
 
 check: lint test
-	uv run ty check leetcode-recommendation/scripts
+	uv run ty check .
 
 lint:
 	uv run ruff check .
