@@ -31,6 +31,10 @@ def attempt(submission_id, status="Accepted", pending=False, **fields):
     )
 
 
+def historical(**fields):
+    return dict(record(**fields), statusDisplay="Accepted", isPending=False)
+
+
 def test_script_initializes_system_certificate_store(monkeypatch):
     calls = []
     monkeypatch.setitem(
@@ -56,7 +60,11 @@ def test_import_filters_and_keeps_latest_solve_per_problem(tmp_path):
     )
     assert history.main(["import", str(source), "--output", str(target)]) == 0
     assert history.main(["import", str(source), "--output", str(target)]) == 0
-    assert json.loads(target.read_text()) == [record(timestamp="1470000001")]
+    assert json.loads(target.read_text()) == {
+        "username": None,
+        "lastSyncedAt": None,
+        "submissions": [historical(timestamp="1470000001")],
+    }
 
 
 def test_import_unknown_schema_does_not_damage_history(tmp_path):
@@ -87,7 +95,7 @@ def test_sync_warns_on_full_window_without_overlap(tmp_path, monkeypatch, capsys
     assert capsys.readouterr().err == ""
     assert history.main(command) == 0
     assert "no attempt overlap" in capsys.readouterr().err
-    assert len(json.loads(target.read_text())) == 41
+    assert len(json.loads(target.read_text())["submissions"]) == 41
 
 
 def test_sync_failure_preserves_existing_history(tmp_path, monkeypatch):
@@ -113,7 +121,10 @@ def test_default_history_import_and_sync(tmp_path, monkeypatch):
         history, "fetch_recent", lambda _: [attempt("1", timestamp="1470000001")]
     )
     assert history.main(["sync", "--username", "alice"]) == 0
-    assert json.loads(target.read_text()) == [record(timestamp="1470000001")]
+    assert json.loads(target.read_text())["submissions"] == [
+        attempt("1", timestamp="1470000001"),
+        historical(),
+    ]
 
 
 def test_merge_deduplicates_existing_and_incoming_by_latest_timestamp():
@@ -122,7 +133,7 @@ def test_merge_deduplicates_existing_and_incoming_by_latest_timestamp():
         record(timestamp="150"),
         record(slug="other", timestamp="300", title="Other"),
     ]
-    assert history.merge(existing, incoming) == [
+    assert history.latest_by_problem([*existing, *incoming]) == [
         record(slug="other", timestamp="300", title="Other"),
         record(timestamp="200"),
     ]
@@ -151,8 +162,6 @@ def test_invalid_api_response_preserves_history(tmp_path, monkeypatch, capsys):
         history, "graphql", lambda *_: {"recentSubmissionList": [attempt("1")]}
     )
     assert history.main(query) == 0
-    attempt_path = history.attempts_path(target)
-    attempts_before = attempt_path.read_bytes()
     before = target.read_bytes()
 
     monkeypatch.setattr(
@@ -163,7 +172,7 @@ def test_invalid_api_response_preserves_history(tmp_path, monkeypatch, capsys):
     assert history.main(query) == 1
     assert "submission id" in capsys.readouterr().err
     assert target.read_bytes() == before
-    assert attempt_path.read_bytes() == attempts_before
+    assert not history.legacy_attempts_path(target).exists()
 
 
 def test_sync_tracks_attempts_and_updates_pending_verdict(
@@ -209,14 +218,12 @@ def test_sync_tracks_attempts_and_updates_pending_verdict(
         "latestFailureAt": 20,
     }
     assert summary["attemptsByProblem"]["unsolved"]["latestAcceptedAt"] is None
-    assert (
-        summary["acceptedProblems"]
-        == json.loads(target.read_text())
-        == [
-            record(slug="legacy", title="Legacy"),
-            record(timestamp="10"),
-        ]
-    )
+    assert summary["acceptedProblems"] == [
+        record(slug="legacy", title="Legacy"),
+        record(timestamp="10"),
+    ]
+    assert len(json.loads(target.read_text())["submissions"]) == 5
+    assert not history.legacy_attempts_path(target).exists()
 
 
 def test_legacy_history_has_no_observed_attempts(tmp_path):
@@ -230,26 +237,66 @@ def test_legacy_history_has_no_observed_attempts(tmp_path):
     }
 
 
-def test_sync_recovers_accepted_history_from_attempts(tmp_path, monkeypatch):
+def test_migration_preserves_legacy_acceptances_and_identified_attempts(
+    tmp_path, monkeypatch
+):
+    target = tmp_path / "history.json"
+    target.write_text(json.dumps([record(), record(slug="legacy", title="Legacy")]))
+    sidecar = history.legacy_attempts_path(target)
+    attempts = [
+        attempt("1"),
+        attempt("2"),  # A distinct acceptance with the same slug and timestamp.
+        attempt("3", "Wrong Answer", timestamp="1469999999"),
+    ]
+    sidecar.write_text(
+        json.dumps(
+            {"username": "alice", "lastSyncedAt": 1470000000, "submissions": attempts}
+        )
+    )
+    expected_summary = history.summarize_history(target, "alice")
+    assert expected_summary["attemptsByProblem"]["two-sum"]["attempts"] == 3
+    assert expected_summary["attemptsByProblem"]["two-sum"]["failedAttempts"] == 1
+    command = ["sync", "--username", "alice", "--history", str(target)]
+    monkeypatch.setattr(history, "fetch_recent", lambda _: attempts)
+    assert history.main(command) == 0
+    assert not sidecar.exists()
+    migrated = json.loads(target.read_text())
+    assert migrated["username"] == "alice"
+    assert migrated["submissions"] == [
+        historical(slug="legacy", title="Legacy"),
+        *attempts,
+    ]
+    assert history.main(command) == 0
+    assert json.loads(target.read_text())["submissions"] == migrated["submissions"]
+    expected_summary["lastSyncedAt"] = json.loads(target.read_text())["lastSyncedAt"]
+    assert history.summarize_history(target, "alice") == expected_summary
+
+
+def test_failed_migration_write_preserves_both_old_files(tmp_path, monkeypatch):
     target = tmp_path / "history.json"
     target.write_text("[]")
+    sidecar = history.legacy_attempts_path(target)
+    sidecar.write_text(
+        json.dumps(
+            {
+                "username": "alice",
+                "lastSyncedAt": 1470000000,
+                "submissions": [attempt("1")],
+            }
+        )
+    )
+    before = sidecar.read_bytes()
+
+    def interrupt(*_):
+        raise OSError("interrupted write")
+
+    monkeypatch.setattr(history, "fetch_recent", lambda _: [])
+    monkeypatch.setattr(history, "write_json", interrupt)
     command = ["sync", "--username", "alice", "--history", str(target)]
-    monkeypatch.setattr(history, "fetch_recent", lambda _: [attempt("1")])
-    write_json = history.write_json
-
-    def interrupt_projection(path, data):
-        if path == target:
-            raise OSError("interrupted write")
-        write_json(path, data)
-
-    monkeypatch.setattr(history, "write_json", interrupt_projection)
     assert history.main(command) == 1
     assert json.loads(target.read_text()) == []
+    assert sidecar.read_bytes() == before
     assert history.summarize_history(target, "alice")["acceptedProblems"] == [record()]
-    monkeypatch.setattr(history, "write_json", write_json)
-    monkeypatch.setattr(history, "fetch_recent", lambda _: [])
-    assert history.main(command) == 0
-    assert json.loads(target.read_text()) == [record()]
 
 
 def test_sync_rejects_attempts_from_another_account(tmp_path, monkeypatch, capsys):

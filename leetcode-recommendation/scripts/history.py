@@ -7,6 +7,8 @@
 # ///
 """Track LeetCode submissions and cache verified problem metadata."""
 
+from __future__ import annotations
+
 import argparse
 import fcntl
 import json
@@ -17,6 +19,7 @@ import time
 import urllib.request
 from contextlib import contextmanager
 from pathlib import Path
+from typing import TypedDict
 
 try:
     # This dependency is declared in the standalone script metadata.
@@ -38,6 +41,17 @@ METADATA_QUERY = """query ProblemMetadata($slug: String!) {
     title titleSlug questionFrontendId difficulty isPaidOnly topicTags { name slug }
   }
 }"""
+
+
+class ProblemAttempts(TypedDict):
+    title: str
+    attempts: int
+    acceptedAttempts: int
+    failedAttempts: int
+    failureStatuses: dict[str, int]
+    latestAttemptAt: int
+    latestAcceptedAt: int | None
+    latestFailureAt: int | None
 
 
 def read_json(path):
@@ -83,7 +97,7 @@ def default_history():
     return Path.home() / ".config" / "leetcode-data" / "history.json"
 
 
-def attempts_path(history):
+def legacy_attempts_path(history):
     return history.with_name(f"{history.name}.attempts.json")
 
 
@@ -101,9 +115,9 @@ def normalize_list(data, fields=FIELDS):
     return [normalize(item, fields) for item in data]
 
 
-def merge(existing, incoming):
+def latest_by_problem(records):
     result = {}
-    for item in [*existing, *incoming]:
+    for item in records:
         slug = item["titleSlug"]
         if slug not in result or int(item["timestamp"]) > int(
             result[slug]["timestamp"]
@@ -153,8 +167,17 @@ def graphql(query, variables):
     return data
 
 
-def normalize_attempt(record):
+def normalize_submission(record, *, require_id):
     attempt = normalize(record, FIELDS)
+    if not require_id and "id" not in record:
+        if (
+            record.get("statusDisplay") != "Accepted"
+            or record.get("isPending", False) is not False
+        ):
+            raise ValueError(
+                "a submission without an id must be a historical acceptance"
+            )
+        return dict(attempt, statusDisplay="Accepted", isPending=False)
     submission_id = record.get("id")
     if not isinstance(submission_id, str) or not submission_id.strip():
         raise ValueError("submission id must be a nonempty string")
@@ -177,43 +200,134 @@ def normalize_attempt(record):
     )
 
 
-def normalize_attempts(records):
+def normalize_submissions(records, *, require_id):
     if not isinstance(records, list):
-        raise TypeError("expected a JSON array of recent submissions")
-    return [normalize_attempt(record) for record in records]
+        raise TypeError("expected a JSON array of submissions")
+    return [normalize_submission(record, require_id=require_id) for record in records]
 
 
 def fetch_recent(username):
     data = graphql(RECENT_QUERY, {"username": username, "limit": RECENT_LIMIT})
-    return normalize_attempts(data.get("recentSubmissionList"))
+    return normalize_submissions(data.get("recentSubmissionList"), require_id=True)
 
 
-def read_attempts(history, username):
-    try:
-        data = read_json(attempts_path(history))
-    except FileNotFoundError:
-        return {}, None
-    if not isinstance(data, dict) or not isinstance(data.get("username"), str):
-        raise TypeError("attempt history must include its LeetCode username")
-    if data["username"].casefold() != username.casefold():
-        raise ValueError(
-            "attempt history belongs to another LeetCode account; use a separate history file"
-        )
+def is_accepted(item):
+    return not item["isPending"] and item["statusDisplay"] == "Accepted"
+
+
+def acceptance_key(item):
+    return item["titleSlug"], item["timestamp"]
+
+
+def merge_submissions(existing, incoming):
+    identified: dict[str, dict] = {}
+    historical: dict[tuple[str, str], dict] = {}
+    for item in [*existing, *incoming]:
+        if "id" not in item:
+            historical.setdefault(acceptance_key(item), item)
+            continue
+        previous = identified.get(item["id"])
+        if previous is None or previous["isPending"] or not item["isPending"]:
+            identified[item["id"]] = item
+    matched = {
+        acceptance_key(item) for item in identified.values() if is_accepted(item)
+    }
+    submissions = list(identified.values())
+    submissions.extend(item for key, item in historical.items() if key not in matched)
+    return sorted(
+        submissions,
+        key=lambda item: (
+            -int(item["timestamp"]),
+            item["titleSlug"],
+            item.get("id", ""),
+        ),
+    )
+
+
+def accepted_history(submissions):
+    return latest_by_problem(
+        normalize(item, FIELDS) for item in submissions if is_accepted(item)
+    )
+
+
+def normalize_history(data, *, require_id=False):
+    if not isinstance(data, dict):
+        raise TypeError("history must be a JSON object")
+    username = data.get("username")
+    if username is not None and (not isinstance(username, str) or not username.strip()):
+        raise ValueError("history has an invalid LeetCode username")
     synced_at = data.get("lastSyncedAt")
-    if type(synced_at) is not int or synced_at < 0:
-        raise ValueError("attempt history has an invalid lastSyncedAt")
+    if synced_at is not None and (
+        type(synced_at) is not int or synced_at < 0 or not username
+    ):
+        raise ValueError("history has an invalid lastSyncedAt or missing username")
     return {
-        item["id"]: item for item in normalize_attempts(data.get("submissions"))
-    }, synced_at
+        "username": username,
+        "lastSyncedAt": synced_at,
+        "submissions": normalize_submissions(
+            data.get("submissions"), require_id=require_id
+        ),
+    }
 
 
-def accepted_history(existing, attempts):
-    accepted = [
-        normalize(item, FIELDS)
-        for item in attempts
-        if not item["isPending"] and item["statusDisplay"] == "Accepted"
+def read_history(path, *, allow_missing=False):
+    try:
+        data = read_json(path)
+    except FileNotFoundError:
+        if not allow_missing:
+            raise
+        data = []
+    if not isinstance(data, list):
+        return normalize_history(data)
+    try:
+        state = normalize_history(
+            read_json(legacy_attempts_path(path)), require_id=True
+        )
+    except FileNotFoundError:
+        # A concurrent migration may have replaced the array before removing the sidecar.
+        if path.exists():
+            data = read_json(path)
+            if not isinstance(data, list):
+                return normalize_history(data)
+        state = {"username": None, "lastSyncedAt": None, "submissions": []}
+    legacy = [
+        dict(item, statusDisplay="Accepted", isPending=False)
+        for item in normalize_list(data)
     ]
-    return merge(existing, accepted)
+    state["submissions"] = merge_submissions(legacy, state["submissions"])
+    return state
+
+
+def write_history(path, state):
+    write_json(path, state)
+    sidecar = legacy_attempts_path(path)
+    try:
+        legacy = normalize_history(read_json(sidecar), require_id=True)
+        covered = {item["id"] for item in state["submissions"] if "id" in item}
+        if legacy["username"] != state["username"] or any(
+            item["id"] not in covered for item in legacy["submissions"]
+        ):
+            print(
+                f"Warning: unmerged attempt history preserved at {sidecar}.",
+                file=sys.stderr,
+            )
+        else:
+            sidecar.unlink()
+    except FileNotFoundError:
+        pass
+    except (OSError, TypeError, ValueError) as exc:
+        print(
+            f"Warning: could not remove the migrated attempt file: {exc}",
+            file=sys.stderr,
+        )
+
+
+def check_username(state, username):
+    stored = state["username"]
+    if stored is not None and stored.casefold() != username.casefold():
+        raise ValueError(
+            "history belongs to another LeetCode account; use a separate history file"
+        )
 
 
 def import_history(args):
@@ -241,14 +355,17 @@ def import_history(args):
             "timestamp": args.timestamp_field,
         },
     )
+    historical = [
+        dict(item, statusDisplay="Accepted", isPending=False)
+        for item in latest_by_problem(incoming)
+    ]
     with write_lock(args.output):
-        existing = (
-            normalize_list(read_json(args.output)) if args.output.exists() else []
-        )
-        combined = merge(existing, incoming)
-        write_json(args.output, combined)
+        state = read_history(args.output, allow_missing=True)
+        state["submissions"] = merge_submissions(state["submissions"], historical)
+        write_history(args.output, state)
+    solved_count = len(accepted_history(state["submissions"]))
     print(
-        f"Merged {len(incoming)} accepted records; history contains {len(combined)} distinct problems."
+        f"Merged {len(incoming)} accepted records; history contains {solved_count} distinct problems."
     )
 
 
@@ -258,48 +375,46 @@ def sync_history(history, username):
             f"history not found: {history}; import a history before syncing"
         )
     with write_lock(history):
-        existing = normalize_list(read_json(history))
-        attempts, last_synced_at = read_attempts(history, username)
+        state = read_history(history)
+        check_username(state, username)
+        stored_ids = {item["id"] for item in state["submissions"] if "id" in item}
         incoming = fetch_recent(username)
         incoming_ids = {item["id"] for item in incoming}
         if (
-            last_synced_at is not None
+            state["lastSyncedAt"] is not None
             and len(incoming_ids) == RECENT_LIMIT
-            and incoming_ids.isdisjoint(attempts)
+            and incoming_ids.isdisjoint(stored_ids)
         ):
             print(
                 "Warning: full recent window has no attempt overlap; submissions may be missing.",
                 file=sys.stderr,
             )
-        new_count = len(incoming_ids.difference(attempts))
-        for item in incoming:
-            previous = attempts.get(item["id"])
-            if previous is None or previous["isPending"] or not item["isPending"]:
-                attempts[item["id"]] = item
-        combined = accepted_history(existing, attempts.values())
-        # The attempt log can reconstruct the accepted projection on the next sync.
-        write_json(
-            attempts_path(history),
+        new_count = len(incoming_ids.difference(stored_ids))
+        submissions = merge_submissions(state["submissions"], incoming)
+        write_history(
+            history,
             {
-                "username": username,
+                "username": state["username"] or username,
                 "lastSyncedAt": int(time.time()),
-                "submissions": list(attempts.values()),
+                "submissions": submissions,
             },
         )
-        write_json(history, combined)
+    solved_count = len(accepted_history(submissions))
     print(
         f"Merged {len(incoming_ids)} recent submissions ({new_count} new); "
-        f"tracking {len(attempts)} attempts and {len(combined)} solved problems."
+        f"tracking {len(stored_ids) + new_count} attempts and {solved_count} solved problems."
     )
 
 
 def summarize_history(history, username):
-    existing = normalize_list(read_json(history))
-    attempts, last_synced_at = read_attempts(history, username)
-    accepted = accepted_history(existing, attempts.values())
+    state = read_history(history)
+    check_username(state, username)
+    submissions = state["submissions"]
+    attempts = [item for item in submissions if "id" in item]
+    accepted = accepted_history(submissions)
     latest_acceptance = {item["titleSlug"]: int(item["timestamp"]) for item in accepted}
-    attempts_by_problem = {}
-    for item in sorted(attempts.values(), key=lambda item: -int(item["timestamp"])):
+    attempts_by_problem: dict[str, ProblemAttempts] = {}
+    for item in sorted(attempts, key=lambda item: -int(item["timestamp"])):
         slug = item["titleSlug"]
         stamp = int(item["timestamp"])
         if slug not in attempts_by_problem:
@@ -327,9 +442,9 @@ def summarize_history(history, username):
             if stats["latestFailureAt"] is None:
                 stats["latestFailureAt"] = stamp
     return {
-        "lastSyncedAt": last_synced_at,
+        "lastSyncedAt": state["lastSyncedAt"],
         "earliestObservedAttemptAt": min(
-            (int(item["timestamp"]) for item in attempts.values()), default=None
+            (int(item["timestamp"]) for item in attempts), default=None
         ),
         "acceptedProblems": accepted,
         "attemptsByProblem": attempts_by_problem,

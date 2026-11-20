@@ -5,7 +5,7 @@ description: Refresh and analyze a user's LeetCode solves and recent attempts to
 
 # LeetCode practice recommendations
 
-Use the user's solved problems and observed submission outcomes to identify practice patterns and recommend specific problems. The accepted history is a JSON array with `title`, `titleSlug`, and a Unix-seconds `timestamp` string for the latest acceptance per problem. A separate local file holds recent attempts accumulated across refreshes.
+Use the user's solved problems and observed submission outcomes to identify practice patterns and recommend specific problems. One `history.json` holds the account, last successful refresh time, and a `submissions` array. Each row has `title`, `titleSlug`, a Unix-seconds `timestamp` string, and `statusDisplay`. Observed submissions include an `id` and judging state. Historical acceptances without IDs establish past solves.
 
 ## Import and refresh
 
@@ -19,7 +19,7 @@ uv run <skill-dir>/scripts/history.py sync --username USERNAME
 uv run <skill-dir>/scripts/history.py summary --username USERNAME
 ```
 
-Run `uv run <skill-dir>/scripts/history.py import --help` for field mappings. Use `--output` on import or `--history` on sync and summary to override the default. Import merges accepted solves. Sync requires an existing history and fetches up to 20 recent submissions from LeetCode.com, including failed attempts. It saves them by submission ID in an adjacent `<history filename>.attempts.json` and merges accepted results into the existing history.
+Run `uv run <skill-dir>/scripts/history.py import --help` for field mappings. Use `--output` on import or `--history` on sync and summary to override the default. Import merges accepted solves. Sync requires an existing history and fetches up to 20 recent submissions from LeetCode.com, including failed attempts. It merges them into `history.json` by submission ID. The first successful sync or import upgrades a legacy accepted array and folds in any previous attempt file.
 
 Run the local summary after syncing. If the refresh fails, use the saved data and report its age from `lastSyncedAt` when available. If the summary is unavailable, use the saved accepted history and disclose missing attempt data. If the sync warns that a full window had no overlap, mention the possible gap. Older accepted imports provide solve dates, while attempt counts cover only submissions observed through sync. Overlapping windows cannot establish complete coverage.
 
