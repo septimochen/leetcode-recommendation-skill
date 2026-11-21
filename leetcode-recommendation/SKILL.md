@@ -38,4 +38,8 @@ uv run <skill-dir>/scripts/history.py metadata --verify SLUG [SLUG ...]
 
 Recommend a practical mix of new problems, retries, and reviews suited to the user's goals and experience. For each, give the title, a LeetCode problem link (`https://leetcode.com/problems/<titleSlug>/`), the skill it practices, and a brief reason tied to the evidence. Describe a problem absent from both histories as new to the available record. Prefer accessible problems and indicate uncertainty about premium access. Do not reveal solutions unless asked.
 
-Save each set of recommendations as a Markdown file in `~/.config/leetcode-data/recommend/`, creating the directory if needed. Use a local date and time to the minute in the filename, such as `2026-11-01-1430.md`. If that filename already exists, append a suffix to avoid overwriting previous recommendations. Include the recommendations, their reasons, and relevant context or uncertainty; tell the user where the file was saved. Honor an explicitly requested alternative location. If saving fails, report the failure and still provide the recommendations.
+## Save the recommendations
+
+Use the [recommendation Markdown template](references/recommendation-format.md) for every saved recommendation, including single picks and longer practice plans. Honor an explicitly requested format or location.
+
+Save the Markdown file in `~/.config/leetcode-data/recommend/`, creating the directory if needed. Use a local date and time to the minute in the filename, such as `2026-11-01-1430.md`. If that filename already exists, append a suffix to avoid overwriting previous recommendations. Tell the user where the file was saved. If saving fails, report the failure and still provide the recommendations.
