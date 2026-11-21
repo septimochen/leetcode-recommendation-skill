@@ -18,6 +18,8 @@ import tempfile
 import time
 import urllib.request
 from contextlib import contextmanager
+from datetime import datetime
+from math import floor
 from pathlib import Path
 from typing import TypedDict
 
@@ -330,12 +332,46 @@ def check_username(state, username):
         )
 
 
-def import_history(args):
-    source = read_json(args.input)
-    if not isinstance(source, list):
+def normalize_progress_export(source):
+    if source.get("errors"):
+        raise ValueError("LeetCode GraphQL export contains errors")
+    data = source.get("data")
+    progress = data.get("userProgressQuestionList") if isinstance(data, dict) else None
+    questions = progress.get("questions") if isinstance(progress, dict) else None
+    if not isinstance(questions, list):
         raise TypeError(
-            "expected a JSON array; adapt nested exports after inspecting their schema"
+            "LeetCode GraphQL export must contain data.userProgressQuestionList.questions"
         )
+
+    accepted = []
+    for question in questions:
+        if not isinstance(question, dict) or not {
+            "questionStatus",
+            "lastResult",
+        }.issubset(question):
+            raise ValueError(
+                "each progress question must have questionStatus and lastResult"
+            )
+        # lastSubmittedAt belongs to the latest submission, which may have failed.
+        if question["questionStatus"] != "SOLVED" or question["lastResult"] != "AC":
+            continue
+        try:
+            submitted_at = datetime.fromisoformat(question.get("lastSubmittedAt"))
+        except (TypeError, ValueError) as exc:
+            raise ValueError("lastSubmittedAt must be an ISO 8601 timestamp") from exc
+        if submitted_at.tzinfo is None:
+            raise ValueError("lastSubmittedAt must include a timezone")
+        accepted.append(
+            normalize(dict(question, timestamp=floor(submitted_at.timestamp())), FIELDS)
+        )
+    return accepted
+
+
+def normalize_import(source, args):
+    if isinstance(source, dict):
+        return normalize_progress_export(source)
+    if not isinstance(source, list):
+        raise TypeError("expected a JSON array or a LeetCode GraphQL progress export")
     if not args.accepted_only:
         if any(
             not isinstance(item, dict) or args.status_field not in item
@@ -347,7 +383,7 @@ def import_history(args):
         source = [
             item for item in source if item[args.status_field] == args.accepted_value
         ]
-    incoming = normalize_list(
+    return normalize_list(
         source,
         {
             "title": args.title_field,
@@ -355,6 +391,10 @@ def import_history(args):
             "timestamp": args.timestamp_field,
         },
     )
+
+
+def import_history(args):
+    incoming = normalize_import(read_json(args.input), args)
     historical = [
         dict(item, statusDisplay="Accepted", isPending=False)
         for item in latest_by_problem(incoming)
@@ -528,16 +568,17 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
     importer = commands.add_parser(
-        "import", help="merge a JSON export into normalized history"
+        "import", help="merge a LeetCode progress export or JSON array into history"
     )
     importer.add_argument("input", type=Path)
     importer.add_argument("--output", default=default_history(), type=Path)
-    importer.add_argument("--title-field", default="title")
-    importer.add_argument("--slug-field", default="titleSlug")
-    importer.add_argument("--timestamp-field", default="timestamp")
-    importer.add_argument("--status-field", default="statusDisplay")
-    importer.add_argument("--accepted-value", default="Accepted")
-    importer.add_argument(
+    flat_export = importer.add_argument_group("Options for flat JSON arrays")
+    flat_export.add_argument("--title-field", default="title")
+    flat_export.add_argument("--slug-field", default="titleSlug")
+    flat_export.add_argument("--timestamp-field", default="timestamp")
+    flat_export.add_argument("--status-field", default="statusDisplay")
+    flat_export.add_argument("--accepted-value", default="Accepted")
+    flat_export.add_argument(
         "--accepted-only",
         action="store_true",
         help="input is known to contain only accepted submissions",

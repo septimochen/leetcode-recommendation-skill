@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 SCRIPT = Path(__file__).parents[1] / "leetcode-recommendation/scripts/history.py"
+PROGRESS_SAMPLE = SCRIPT.parents[1] / "examples/leetcode-progress.json"
 
 
 def load_history(name: str) -> types.ModuleType:
@@ -74,6 +75,67 @@ def test_import_unknown_schema_does_not_damage_history(tmp_path):
     target.write_text(json.dumps([record()]))
     before = target.read_bytes()
     assert history.main(["import", str(source), "--output", str(target)]) == 1
+    assert target.read_bytes() == before
+
+
+def test_progress_sample_import_and_recent_sync(tmp_path, monkeypatch):
+    target = tmp_path / "history.json"
+    import_command = ["import", str(PROGRESS_SAMPLE), "--output", str(target)]
+    two_sum = historical(timestamp="1735787045")
+    add_binary = historical(
+        slug="add-binary", title="Add Binary", timestamp="1735732800"
+    )
+    assert history.main(import_command) == 0
+    assert json.loads(target.read_text())["submissions"] == [two_sum, add_binary]
+
+    failure = attempt(
+        "1",
+        "Wrong Answer",
+        slug="valid-parentheses",
+        title="Valid Parentheses",
+        timestamp="1735790400",
+    )
+    accepted = dict(two_sum, id="2")
+    monkeypatch.setattr(
+        history,
+        "graphql",
+        lambda *_: {
+            "recentSubmissionList": [
+                dict(row, isPending="Not Pending") for row in (failure, accepted)
+            ]
+        },
+    )
+    sync_command = ["sync", "--username", "alice", "--history", str(target)]
+    assert history.main(sync_command) == 0
+    assert history.main(import_command) == 0
+    assert history.main(sync_command) == 0
+    state = json.loads(target.read_text())
+    assert state["username"] == "alice"
+    assert state["lastSyncedAt"] > 0
+    assert state["submissions"] == [failure, accepted, add_binary]
+    summary = history.summarize_history(target, "alice")
+    assert summary["attemptsByProblem"]["valid-parentheses"]["failedAttempts"] == 1
+    assert summary["attemptsByProblem"]["two-sum"]["acceptedAttempts"] == 1
+
+
+def test_progress_import_uses_timezone_and_latest_verdict(tmp_path):
+    source = tmp_path / "progress.json"
+    target = tmp_path / "history.json"
+    export = json.loads(PROGRESS_SAMPLE.read_text())
+    questions = export["data"]["userProgressQuestionList"]["questions"]
+    questions[0]["lastSubmittedAt"] = "2025-01-01T22:04:05-05:00"
+    questions[1]["lastResult"] = "WA"
+    source.write_text(json.dumps(export))
+    command = ["import", str(source), "--output", str(target)]
+    assert history.main(command) == 0
+    assert json.loads(target.read_text())["submissions"] == [
+        historical(timestamp="1735787045")
+    ]
+
+    before = target.read_bytes()
+    questions[0]["lastSubmittedAt"] = "2025-01-02T03:04:05"
+    source.write_text(json.dumps(export))
+    assert history.main(command) == 1
     assert target.read_bytes() == before
 
 

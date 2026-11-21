@@ -9,7 +9,7 @@ Use the user's solved problems and observed submission outcomes to identify prac
 
 ## Import and refresh
 
-Use `~/.config/leetcode-data/history.json` as the default history without asking for its path; honor an explicitly supplied alternative. Ask for the LeetCode.com username if needed. Do not commit personal history to a repository. Inspect the supplied export's structure and status values before importing. The helper supports JSON arrays and configurable top-level field names. For another format or nested structure, adapt it after seeing the actual export; never guess that failed submissions are accepted. Use `--accepted-only` only when the source is known to contain accepted submissions exclusively.
+Use `~/.config/leetcode-data/history.json` as the default history without asking for its path and honor an explicitly supplied alternative. Keep personal exports and history out of the repository. The helper accepts the LeetCode.com GraphQL progress export and flat JSON arrays. See the [manual export instructions](references/import.md) and [sample JSON](examples/leetcode-progress.json). Inspect unknown formats and verify their status values before adapting them. For flat arrays, use `--accepted-only` only when the source contains accepted submissions exclusively.
 
 Before every recommendation, refresh the history. Use the username supplied by the user or the `username` field in `~/.config/leetcode-data/config.json`. Ask if neither is available. If using another account, use a separate history file. Keep the local data and configuration out of the repository.
 
@@ -19,7 +19,7 @@ uv run <skill-dir>/scripts/history.py sync --username USERNAME
 uv run <skill-dir>/scripts/history.py summary --username USERNAME
 ```
 
-Run `uv run <skill-dir>/scripts/history.py import --help` for field mappings. Use `--output` on import or `--history` on sync and summary to override the default. Import merges accepted solves. Sync requires an existing history and fetches up to 20 recent submissions from LeetCode.com, including failed attempts. It merges them into `history.json` by submission ID. The first successful sync or import upgrades a legacy accepted array and folds in any previous attempt file.
+Run `uv run <skill-dir>/scripts/history.py import --help` for flat-array field mappings. Use `--output` on import or `--history` on sync and summary to override the default. Import merges accepted solves. Sync requires an existing history and fetches up to 20 recent submissions from LeetCode.com, including failed attempts. It merges them into `history.json` by submission ID. An accepted submission with the same problem slug and timestamp replaces the corresponding imported acceptance. The first successful sync or import upgrades a legacy accepted array and folds in any previous attempt file.
 
 Run the local summary after syncing. If the refresh fails, use the saved data and report its age from `lastSyncedAt` when available. If the summary is unavailable, use the saved accepted history and disclose missing attempt data. If the sync warns that a full window had no overlap, mention the possible gap. Older accepted imports provide solve dates, while attempt counts cover only submissions observed through sync. Overlapping windows cannot establish complete coverage.
 

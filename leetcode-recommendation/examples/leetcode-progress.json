@@ -1,0 +1,52 @@
+{
+  "data": {
+    "userProgressQuestionList": {
+      "totalNum": 3,
+      "questions": [
+        {
+          "translatedTitle": null,
+          "frontendId": "1",
+          "title": "Two Sum",
+          "titleSlug": "two-sum",
+          "difficulty": "EASY",
+          "lastSubmittedAt": "2025-01-02T03:04:05+00:00",
+          "numSubmitted": 1,
+          "questionStatus": "SOLVED",
+          "lastResult": "AC",
+          "topicTags": [
+            {"name": "Array", "nameTranslated": null, "slug": "array"},
+            {"name": "Hash Table", "nameTranslated": null, "slug": "hash-table"}
+          ]
+        },
+        {
+          "translatedTitle": null,
+          "frontendId": "67",
+          "title": "Add Binary",
+          "titleSlug": "add-binary",
+          "difficulty": "EASY",
+          "lastSubmittedAt": "2025-01-01T12:00:00+00:00",
+          "numSubmitted": 1,
+          "questionStatus": "SOLVED",
+          "lastResult": "AC",
+          "topicTags": [
+            {"name": "String", "nameTranslated": null, "slug": "string"}
+          ]
+        },
+        {
+          "translatedTitle": null,
+          "frontendId": "20",
+          "title": "Valid Parentheses",
+          "titleSlug": "valid-parentheses",
+          "difficulty": "EASY",
+          "lastSubmittedAt": "2025-01-02T04:00:00+00:00",
+          "numSubmitted": 1,
+          "questionStatus": "ATTEMPTED",
+          "lastResult": "WA",
+          "topicTags": [
+            {"name": "Stack", "nameTranslated": null, "slug": "stack"}
+          ]
+        }
+      ]
+    }
+  }
+}
